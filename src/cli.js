@@ -19,9 +19,17 @@ import {
   UnsupportedServerError,
   isIncomingMessage,
 } from './client.js'
+import { DEFAULT_PORT, loadOrCreateToken, serveMcp } from './mcp-proxy.js'
 
 function parseArgs(argv) {
-  const args = { exec: null, state: '.state/cursor', dialogs: null, from: 'now', quiet: false }
+  const args = {
+    exec: null,
+    state: '.state/cursor',
+    dialogs: null,
+    from: 'now',
+    quiet: false,
+    serveMcp: null,
+  }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--exec') args.exec = argv[++i]
@@ -29,6 +37,11 @@ function parseArgs(argv) {
     else if (arg === '--dialogs') args.dialogs = argv[++i].split(',').map((d) => d.trim())
     else if (arg === '--from') args.from = argv[++i]
     else if (arg === '--quiet') args.quiet = true
+    else if (arg === '--serve-mcp') {
+      // Порт необязателен: «--serve-mcp --exec ...» не должен съесть команду.
+      const next = argv[i + 1]
+      args.serveMcp = next && /^\d+$/.test(next) ? Number(argv[++i]) : DEFAULT_PORT
+    }
     else if (arg === '--help' || arg === '-h') args.help = true
   }
   return args
@@ -43,6 +56,11 @@ const HELP = `
 
   export ONECHAT_API_KEY=sk_1chat_rw_...
 
+Тот же процесс умеет отдавать агенту MCP, чтобы он не только просыпался,
+но и отвечал — и чтобы ключ лежал в одном месте, а не в двух:
+
+  npx @1chat/agent --exec "hermes run" --serve-mcp
+
 Параметры:
   --exec <команда>   что запускать на входящее сообщение. Событие приходит
                      в stdin как JSON — текст пишет человек, и рано или поздно
@@ -52,6 +70,10 @@ const HELP = `
   --from now|begin   с чего начать при первом запуске; по умолчанию now,
                      иначе агент проснётся на всей сохранённой истории
   --quiet            не писать в лог ничего, кроме ошибок
+  --serve-mcp [порт] поднять локальный MCP (по умолчанию 8765). Слушает
+                     только 127.0.0.1 и требует пароль, который печатается
+                     при старте — иначе доступ к переписке получил бы любой
+                     процесс на этой машине
 
 Переменные окружения:
   ONECHAT_API_KEY    обязательна
@@ -99,8 +121,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     process.stderr.write('Не задан ONECHAT_API_KEY. Выпустите ключ на странице «API-ключи».\n')
     return 1
   }
-  if (!args.exec) {
-    process.stderr.write('Не задан --exec: нечего запускать на входящее сообщение.\n')
+  if (!args.exec && args.serveMcp === null) {
+    process.stderr.write('Нечего делать: задайте --exec, --serve-mcp или оба.\n')
     return 1
   }
 
@@ -122,6 +144,48 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       log('останавливаюсь')
       client.stop()
     })
+  }
+
+  let mcp = null
+  if (args.serveMcp !== null) {
+    const tokenFile = `${args.state}.mcp-token`
+    const token = await loadOrCreateToken(tokenFile, { readFile, writeFile, mkdir })
+    try {
+      mcp = await serveMcp({
+        apiKey: env.ONECHAT_API_KEY,
+        baseUrl: env.ONECHAT_BASE_URL ?? 'https://app.1-chat.ru/api',
+        port: args.serveMcp,
+        token,
+        log,
+      })
+    } catch (error) {
+      // Занятый порт — это отказ с объяснением. Промолчать значило бы
+      // оставить агента с «соединение отвергнуто» и без причины.
+      process.stderr.write(`${error.message}\n`)
+      return 1
+    }
+    // Печатаем готовый кусок конфига, а не три отдельных числа: собирать
+    // его руками — лишний повод ошибиться в том, что и так известно.
+    process.stdout.write(
+      `\nMCP поднят. В конфиг агента:\n\n` +
+        `mcp_servers:\n` +
+        `  1chat:\n` +
+        `    url: "${mcp.url}"\n` +
+        `    headers:\n` +
+        `      Authorization: "Bearer ${mcp.token}"\n\n` +
+        `Пароль постоянный и лежит в ${tokenFile}: перезапуск его не меняет.\n` +
+        `Ключ 1-chat агенту не нужен — его подставляет эта служба.\n\n`,
+    )
+  }
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => mcp?.close())
+  }
+
+  if (!args.exec) {
+    // Только MCP: держим процесс живым, наблюдать не за чем.
+    await new Promise(() => {})
+    return 0
   }
 
   const saved = await readCursor(args.state)
@@ -146,6 +210,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       return 1
     }
     throw error
+  } finally {
+    await mcp?.close()
   }
   return 0
 }
