@@ -51,7 +51,7 @@ jobs:
           echo "npm для публикации: $(npx -y npm@latest --version)"
           echo "токен пайплайна  : ${ACTIONS_ID_TOKEN_REQUEST_URL:+есть}${ACTIONS_ID_TOKEN_REQUEST_URL:-НЕТ}"
           echo "репозиторий      : $GITHUB_REPOSITORY"
-          echo "файл процесса    : $(basename "$GITHUB_WORKFLOW_REF" | cut -d@ -f1)"
+          echo "файл процесса    : ${GITHUB_WORKFLOW_REF%%@*}"
           echo "настройки npm    :"
           cat ~/.npmrc 2>/dev/null || echo "  (.npmrc нет — так и надо)"
           echo "───────────────────────────────────────────"
