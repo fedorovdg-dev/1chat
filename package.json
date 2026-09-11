@@ -1,0 +1,38 @@
+{
+  "name": "@1chat/agent",
+  "version": "0.1.0",
+  "description": "Будит вашего ИИ-агента, когда в 1-chat приходит сообщение",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fedorovdg-dev/1chat.git"
+  },
+  "homepage": "https://1-chat.ru/baza-znany/api",
+  "bin": {
+    "1chat-agent": "src/cli.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "1chat",
+    "mcp",
+    "ai-agent",
+    "telegram",
+    "whatsapp",
+    "webhook"
+  ],
+  "main": "src/client.js",
+  "exports": {
+    ".": "./src/client.js"
+  }
+}
