@@ -17,17 +17,24 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      # Без `registry-url`: он создаёт .npmrc со строкой авторизации из
+      # NODE_AUTH_TOKEN, а её у нас нет — и npm отправляет пустой токен вместо
+      # того, чтобы получить настоящий через пайплайн. Отвечает на это реестр
+      # кодом 404, ничего не объясняя: так он скрывает, существует ли пакет со
+      # скоупом, от неавторизованного запроса.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       # Обмен OIDC-токена пайплайна на короткий токен npm умеет только
       # свежий npm; тот, что идёт в комплекте с Node, ещё нет. Без этого
       # публикация отказывает, не объясняя, чего ей не хватило.
       - run: npm install -g npm@latest
 
-      - run: npm --version
+      - name: Версия npm и есть ли настройки авторизации
+        run: |
+          npm --version
+          cat ~/.npmrc 2>/dev/null || echo '(.npmrc нет — так и надо)'
 
       - run: npm test
 
