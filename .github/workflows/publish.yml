@@ -1,0 +1,38 @@
+name: Publish
+
+# Публикуем по тегу, а не по каждому пушу в main: версия в npm неизменяема,
+# и случайная публикация не откатывается, а только перебивается следующей.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Нужен для trusted publishing: npm выдаёт короткоживущий токен
+      # в обмен на этот, и долгоживущего секрета, который можно украсть,
+      # в репозитории не существует вовсе.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm test
+
+      - name: Версия в теге совпадает с версией в package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Тег v$TAG не совпадает с версией пакета $PKG" >&2
+            exit 1
+          fi
+
+      # Пакет публичный: он ничего не скрывает, а `npx` без логина работает
+      # только с публичным. Scoped-пакеты иначе публикуются приватными.
+      - run: npm publish --access public

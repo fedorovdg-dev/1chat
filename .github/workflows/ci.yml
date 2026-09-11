@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      # Клиент ставят на чужие серверы, где версия Node какая есть.
+      # Проверяем на минимально поддерживаемой и на текущей.
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  # Проверяем, что в пакет не уедет лишнее. Это не про размер: клиент
+  # держит чужие API-ключи, и всё, что в нём лежит, окажется на чужих
+  # машинах.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Состав пакета
+        run: npm pack --dry-run
+      - name: В пакете нет ничего, кроме кода и описания
+        run: |
+          npm pack --json > /tmp/pack.json
+          node -e "
+            const files = require('/tmp/pack.json')[0].files.map(f => f.path)
+            const allowed = /^(src\/|README\.md$|package\.json$|LICENSE$)/
+            const extra = files.filter(f => !allowed.test(f))
+            if (extra.length) {
+              console.error('Лишнее в пакете:', extra)
+              process.exit(1)
+            }
+            console.log('файлов:', files.length)
+          "
