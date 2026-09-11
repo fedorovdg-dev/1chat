@@ -22,6 +22,13 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # Обмен OIDC-токена пайплайна на короткий токен npm умеет только
+      # свежий npm; тот, что идёт в комплекте с Node, ещё нет. Без этого
+      # публикация отказывает, не объясняя, чего ей не хватило.
+      - run: npm install -g npm@latest
+
+      - run: npm --version
+
       - run: npm test
 
       - name: Версия в теге совпадает с версией в package.json
