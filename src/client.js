@@ -16,6 +16,14 @@ import { setTimeout as sleep } from 'node:timers/promises'
 /** Ошибка, после которой ждать бесполезно: ключ отозван или перевыпущен. */
 export class AuthError extends Error {}
 
+/**
+ * Сервер не знает про ожидание событий.
+ *
+ * Так выглядит указание на устаревший 1-chat или просто опечатка в адресе.
+ * Повторять бессмысленно, а голый «HTTP 404» человеку ничего не объясняет.
+ */
+export class UnsupportedServerError extends Error {}
+
 const DEFAULT_BASE_URL = 'https://app.1-chat.ru/api'
 
 /** Сервер держит запрос до 30 секунд; берём столько же. */
@@ -64,6 +72,12 @@ export class OneChatClient {
     })
     if (response.status === 401) {
       throw new AuthError('Ключ недействителен: не существует, отозван или перевыпущен.')
+    }
+    if (response.status === 404) {
+      throw new UnsupportedServerError(
+        `Адрес ${this.baseUrl} не отвечает на ${path}. Проверьте ONECHAT_BASE_URL — ` +
+          'возможно, указан не тот сервер или он ещё не обновлён.',
+      )
     }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} на ${path}`)
@@ -127,6 +141,7 @@ export class OneChatClient {
         result = await this.waitOnce(cursor)
       } catch (error) {
         if (error instanceof AuthError) throw error
+        if (error instanceof UnsupportedServerError) throw error
         this.log('связь потеряна, пауза', { error: String(error), backoffMs: backoff })
         await sleep(backoff)
         backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)

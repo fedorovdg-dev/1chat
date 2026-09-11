@@ -1,6 +1,6 @@
 {
   "name": "@1chat/agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Будит вашего ИИ-агента, когда в 1-chat приходит сообщение",
   "type": "module",
   "license": "MIT",

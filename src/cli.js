@@ -13,7 +13,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 
-import { AuthError, OneChatClient, isIncomingMessage } from './client.js'
+import {
+  AuthError,
+  OneChatClient,
+  UnsupportedServerError,
+  isIncomingMessage,
+} from './client.js'
 
 function parseArgs(argv) {
   const args = { exec: null, state: '.state/cursor', dialogs: null, from: 'now', quiet: false }
@@ -133,9 +138,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       },
     })
   } catch (error) {
-    if (error instanceof AuthError) {
-      // Не сбой связи: ждать бесполезно. Выходим, пусть перезапустят
-      // с новым ключом.
+    // Ожидаемые отказы объясняем словами. Стектрейс здесь бесполезен:
+    // чинить их будет человек, у которого не тот ключ или не тот адрес,
+    // а не тот, кто писал этот код.
+    if (error instanceof AuthError || error instanceof UnsupportedServerError) {
       process.stderr.write(`${error.message}\n`)
       return 1
     }
@@ -144,6 +150,14 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   return 0
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().then((code) => process.exit(code))
-}
+// Запускаем без проверки «вызван ли файл напрямую». Такая проверка
+// сравнивает путь модуля с argv[1], а npm ставит команду через символическую
+// ссылку — пути не совпадают, и программа молча ничего не делает. Этот файл
+// объявлен точкой входа и больше ниоткуда не импортируется, так что условие
+// было лишним и стоило работоспособности при установке.
+main()
+  .then((code) => process.exit(code))
+  .catch((error) => {
+    process.stderr.write(`${error?.stack ?? error}\n`)
+    process.exit(1)
+  })
