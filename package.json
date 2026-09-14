@@ -1,7 +1,7 @@
 {
   "name": "@1chat/agent",
-  "version": "0.2.0",
-  "description": "Будит вашего ИИ-агента, когда в 1-chat приходит сообщение",
+  "version": "0.3.0",
+  "description": "Будит ИИ-агента на сообщения в 1-chat, собирает их в пачки и не даёт отправить устаревший ответ",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -10,7 +10,8 @@
   },
   "homepage": "https://1-chat.ru/baza-znany/api",
   "bin": {
-    "1chat-agent": "src/cli.js"
+    "1chat-agent": "src/cli.js",
+    "1chat-hermes-bridge": "src/hermes-bridge-cli.js"
   },
   "files": [
     "src",
@@ -22,7 +23,7 @@
     "start": "node src/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^22.13.0 || >=23.4.0"
   },
   "keywords": [
     "1chat",

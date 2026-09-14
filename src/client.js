@@ -120,14 +120,19 @@ export class OneChatClient {
    * @param {number|null} options.since откуда продолжать; null — с текущего места
    * @param {(event: object) => Promise<void>|void} options.onEvent
    * @param {(cursor: number) => Promise<void>|void} [options.onCursor] сохранить позицию
+   * @param {(page: {cursor: number, events: object[]}) => Promise<void>|void} [options.onPage]
+   *   страница целиком: события и курсор вместе. С ним onEvent и onCursor не
+   *   вызываются — сохранить их по отдельности значит однажды сохранить
+   *   одно без другого.
    */
-  async run({ since = null, onEvent, onCursor = () => {} }) {
+  async run({ since = null, onEvent = () => {}, onCursor = () => {}, onPage = null }) {
+    const saveCursor = (cursor) => (onPage ? onPage({ cursor, events: [] }) : onCursor(cursor))
     let cursor = since
     if (cursor === null) {
       // Первый запуск начинается с текущего момента, а не с начала журнала:
       // иначе агент проснётся на двухнедельной истории и напишет всем подряд.
       cursor = await this.cursor()
-      await onCursor(cursor)
+      await saveCursor(cursor)
       this.log('начинаю с текущего момента', { cursor })
     } else {
       this.log('продолжаю с сохранённой позиции', { cursor })
@@ -151,19 +156,26 @@ export class OneChatClient {
 
       if (result.gap) {
         cursor = await this.cursor()
-        await onCursor(cursor)
+        await saveCursor(cursor)
         this.log('позиция устарела, продолжаю с текущего момента', { cursor })
         continue
       }
 
-      if (result.cursor > cursor) {
-        cursor = result.cursor
-        await onCursor(cursor)
-      }
+      if (onPage) {
+        if (result.events.length || result.cursor > cursor) {
+          await onPage({ cursor: Math.max(result.cursor, cursor), events: result.events })
+          cursor = Math.max(result.cursor, cursor)
+        }
+      } else {
+        if (result.cursor > cursor) {
+          cursor = result.cursor
+          await onCursor(cursor)
+        }
 
-      for (const event of result.events) {
-        if (this.stopped) break
-        await onEvent(event)
+        for (const event of result.events) {
+          if (this.stopped) break
+          await onEvent(event)
+        }
       }
 
       // Пустой круг, законченный слишком быстро, значит сервер не удержал
