@@ -19,7 +19,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm test
+      # Каждый файл отдельно и с пределом времени: зависание должно становиться
+      # падением с названием теста, а не шестичасовым простоем. Упавшее
+      # выводится аннотациями — их видно без доступа к логам.
+      - name: Тесты
+        run: |
+          status=0
+          for f in test/*.test.js; do
+            start=$(date +%s)
+            if ! timeout 120 node --test --test-reporter=spec --test-timeout=60000 "$f" > out.txt 2>&1; then
+              status=1
+              echo "::error title=$f::упал за $(( $(date +%s) - start )) с"
+              grep -E "✖|timed out|Error|expected|actual" out.txt | head -20 | while IFS= read -r line; do
+                echo "::error title=$f::$line"
+              done
+            fi
+            echo "$f — $(( $(date +%s) - start )) с"
+            cat out.txt
+          done
+          exit $status
 
   # Проверяем, что в пакет не уедет лишнее. Это не про размер: клиент
   # держит чужие API-ключи, и всё, что в нём лежит, окажется на чужих

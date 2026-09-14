@@ -118,7 +118,7 @@ test('«стоп, не отправляй» до отправки — стары
   })
   assert.match(reply.text, /^STALE_CONTEXT/)
   first.exit(0)
-  await until(() => h.agents.launched.length === 2 || h.clock.timers.length > 0)
+  await until(() => h.store.getRun(first.input.run_id).status === 'stale')
   await h.clock.advance(3000)
 
   const second = h.agents.launched[1]
@@ -375,7 +375,9 @@ test('max-wait запускает подготовку при непрерывн
 
   // Отправка ждёт паузу, а не уходит сразу.
   const pending = callTool(h.url, run.env.ONECHAT_MCP_TOKEN, 'send_message', { conversation_id: D1, text: 'ответ' })
-  await until(() => h.clock.timers.some((timer) => timer.at > h.clock.now()), { message: 'отправка не встала в ожидание' })
+  // Ждём именно сон отправки, а не любой таймер: диспетчер ставит свои, и
+  // на медленной машине тест двигал часы раньше, чем запрос доходил до MCP.
+  await until(() => h.clock.sleeping > 0, { rounds: 2000, message: 'отправка не встала в ожидание' })
   assert.equal(h.upstream.sends.length, 0)
 
   // Пока ждала — пришло ещё: отправка устарела.

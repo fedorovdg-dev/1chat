@@ -24,8 +24,8 @@ export class FakeClock {
     return this.t
   }
 
-  setTimeout(fn, ms) {
-    const timer = { id: ++this.seq, at: this.t + Math.max(0, ms), fn }
+  setTimeout(fn, ms, kind = 'timer') {
+    const timer = { id: ++this.seq, at: this.t + Math.max(0, ms), fn, kind }
     this.timers.push(timer)
     return timer.id
   }
@@ -34,8 +34,13 @@ export class FakeClock {
     this.timers = this.timers.filter((timer) => timer.id !== id)
   }
 
+  /** Сон помечается отдельно от таймеров диспетчера: тесты ждут именно его. */
   sleep(ms) {
-    return new Promise((done) => this.setTimeout(done, ms))
+    return new Promise((done) => this.setTimeout(done, ms, 'sleep'))
+  }
+
+  get sleeping() {
+    return this.timers.filter((timer) => timer.kind === 'sleep').length
   }
 
   /** Двигает время, по дороге срабатывая таймеры по порядку. */
@@ -62,7 +67,7 @@ export async function flush(rounds = 5) {
 }
 
 /** Ждёт условия, двигая реальный цикл событий (не время подделки). */
-export async function until(predicate, { rounds = 400, message = 'условие не наступило' } = {}) {
+export async function until(predicate, { rounds = 2000, message = 'условие не наступило' } = {}) {
   for (let i = 0; i < rounds; i += 1) {
     if (await predicate()) return
     await new Promise((done) => setTimeout(done, 5))

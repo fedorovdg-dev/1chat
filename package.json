@@ -1,6 +1,6 @@
 {
   "name": "@1chat/agent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Будит ИИ-агента на сообщения в 1-chat, собирает их в пачки и не даёт отправить устаревший ответ",
   "type": "module",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-timeout=60000 test/*.test.js",
     "start": "node src/cli.js"
   },
   "engines": {
