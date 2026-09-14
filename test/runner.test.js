@@ -85,3 +85,37 @@ test('ключ 1-chat не попадает в окружение агента',
   const seen = JSON.parse(await readFile(out, 'utf8'))
   assert.ok(!JSON.stringify(seen.env).includes(key))
 })
+
+test('после таймаута добивается вся группа, даже если шелл умер первым', async () => {
+  const out = await outFile()
+  // «true; …» не даёт шеллу заменить себя командой: так ведёт себя dash на
+  // Ubuntu. Шелл умирает от SIGTERM сразу, агент SIGTERM игнорирует — и
+  // раньше отложенный SIGKILL отменялся вместе с завершением шелла.
+  const run = runAgentProcess({
+    command: `true; ${command}`,
+    input: {},
+    env: { ...process.env, FAKE_MODE: 'hang', FAKE_OUT: out },
+    timeoutMs: 500,
+    killGraceMs: 300,
+  })
+  await until(async () => readFile(out, 'utf8').then(() => true, () => false))
+  const agentPid = JSON.parse(await readFile(out, 'utf8')).pid
+  const outcome = await run.promise
+  assert.equal(outcome.kind, 'timeout')
+  await until(() => !alive(agentPid), { message: 'агент пережил таймаут' })
+})
+
+test('процессы, оставленные агентом после выхода, не переживают запуск', async () => {
+  const out = await outFile()
+  const run = runAgentProcess({
+    command,
+    input: {},
+    env: { ...process.env, FAKE_MODE: 'orphan', FAKE_OUT: out },
+    timeoutMs: 10_000,
+    killGraceMs: 300,
+  })
+  const outcome = await run.promise
+  assert.deepEqual(outcome, { kind: 'exit', code: 0, signal: null })
+  const orphan = Number(await readFile(`${out}.child`, 'utf8'))
+  await until(() => !alive(orphan), { message: 'осиротевший процесс остался жить' })
+})

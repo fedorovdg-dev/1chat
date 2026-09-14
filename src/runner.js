@@ -53,25 +53,45 @@ export function runAgentProcess({ command, input, env, timeoutMs, killGraceMs = 
   }
 
   let timedOut = false
-  let killTimer = null
+  let terminating = null
   let settled = false
+  const isGroup = process.platform !== 'win32'
 
   const signalGroup = (signal) => {
-    if (settled || !child.pid) return
+    if (!child.pid) return false
     try {
-      if (process.platform !== 'win32') process.kill(-child.pid, signal)
+      if (isGroup) process.kill(-child.pid, signal)
       else child.kill(signal)
+      return true
     } catch {
-      // Группа уже завершилась.
+      // В группе никого не осталось.
+      return false
     }
   }
 
+  const groupAlive = () => isGroup && signalGroup(0)
+
+  /**
+   * SIGTERM всей группе, SIGKILL тем, кто пережил паузу.
+   *
+   * Завершение первого процесса группы ничего не значит: шелл может умереть
+   * от SIGTERM сразу, а агент, запущенный им дочерним процессом, сигнал
+   * проигнорирует. Раньше отложенный SIGKILL отменялся вместе с выходом
+   * шелла, и агент продолжал работать после таймаута. Теперь добивается
+   * группа, а не первый процесс.
+   */
   const terminate = () => {
-    signalGroup('SIGTERM')
-    if (!killTimer) {
-      killTimer = setTimeout(() => signalGroup('SIGKILL'), killGraceMs)
-      killTimer.unref?.()
-    }
+    if (terminating) return terminating
+    terminating = (async () => {
+      if (!signalGroup('SIGTERM')) return
+      const deadline = Date.now() + killGraceMs
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50))
+        if (!groupAlive()) return
+      }
+      signalGroup('SIGKILL')
+    })()
+    return terminating
   }
 
   const timer = setTimeout(() => {
@@ -81,11 +101,15 @@ export function runAgentProcess({ command, input, env, timeoutMs, killGraceMs = 
   timer.unref?.()
 
   const promise = new Promise((done) => {
-    const finish = (outcome) => {
+    const finish = async (outcome) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
-      if (killTimer) clearTimeout(killTimer)
+      // Запуск закончен, только когда в его группе никого не осталось:
+      // процесс, оставленный агентом в фоне, иначе пережил бы свой запуск и
+      // работал бы параллельно со следующим.
+      if (groupAlive()) await terminate()
+      else if (terminating) await terminating
       done(outcome)
     }
     child.on('error', (error) => finish({ kind: 'spawn_error', error: String(error) }))

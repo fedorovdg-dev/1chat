@@ -12,6 +12,13 @@ if (out) {
 }
 
 if (mode === 'fail') process.exit(3)
+if (mode === 'orphan') {
+  // Фоновый процесс, упрямый к SIGTERM, держит унаследованный stdout.
+  const child = spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"], { stdio: ['ignore', 'inherit', 'inherit'] })
+  writeFileSync(`${out}.child`, String(child.pid))
+  child.unref()
+  process.exit(0)
+}
 if (mode === 'hang' || mode === 'hang-with-child') {
   if (mode === 'hang-with-child') {
     // Внук, как у bridge, запускающего агента: должен умереть вместе с группой.
